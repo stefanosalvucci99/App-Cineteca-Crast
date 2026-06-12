@@ -104,7 +104,7 @@ def mostra_home():
     st.title("🏆 Benvenuto nella Cineteca Crast")
     st.markdown("""
     Questa è la dashboard ufficiale per gli amanti del cinema. Qui puoi tracciare i voti, 
-    scoprire le tendenze del gruppo e sfidare le opinioni degli altri cinefili.
+    scoprire le trends del gruppo e sfidare le opinioni degli altri cinefili.
     
     👈 Usa la **barra laterale sinistra** per navigare tra le sezioni del sito!
     """)
@@ -143,7 +143,7 @@ def mostra_home():
 
 
 # =====================================================================
-# PAGINA 2: CLASSIFICHE 2026
+# PAGINA 2: CLASSIFICHE 2026 (Modificata con "I peggiori 5 💩")
 # =====================================================================
 def mostra_classifiche_2026():
     st.title("📊 Classifiche e Analisi - Anno 2026")
@@ -152,15 +152,17 @@ def mostra_classifiche_2026():
         st.error("❌ Impossibile connettersi a Google Fogli o elaborare i dati.")
         return
 
-    # --- CLASSIFICA GENERALE ---
+    # --- ELABORAZIONE CLASSIFICA GENERALE ---
     classifica = df_data.groupby("Film")["Voto"].mean().reset_index()
     classifica = classifica.rename(columns={"Film": "Films", "Voto": "Media"})
     
     if not classifica.empty:
+        # Generazione classifica dei migliori (Decrescente)
         classifica_totale = classifica.sort_values(by="Media", ascending=False).reset_index(drop=True)
         classifica_totale.index = classifica_totale.index + 1
         classifica_totale = classifica_totale.reset_index().rename(columns={"index": "Posizione"})
 
+        # --- SEZIONE: I MIGLIORI TRE ---
         st.subheader("🥇 I Magnifici Tre")
         col1, col2, col3 = st.columns(3)
         if len(classifica_totale) >= 1:
@@ -172,6 +174,29 @@ def mostra_classifiche_2026():
         
         st.divider()
 
+        # --- NUOVA SEZIONE: I PEGGIORI 5 ---
+        st.subheader("💩 I Peggiori 5 del 2026")
+        st.caption("I film che hanno ottenuto la media voto più bassa all'interno della Cineteca.")
+        
+        # Ordiniamo in senso crescente per prendere i voti più bassi
+        peggiori_5 = classifica.sort_values(by="Media", ascending=True).head(5).reset_index(drop=True)
+        peggiori_5.index = peggiori_5.index + 1
+        peggiori_5 = peggiori_5.reset_index().rename(columns={"index": "Flop"})
+        
+        st.dataframe(
+            peggiori_5,
+            column_config={
+                "Flop": st.column_config.NumberColumn("Pos.", format="%d"),
+                "Films": st.column_config.TextColumn("Titolo del Film da Evitare"),
+                "Media": st.column_config.NumberColumn("Media Voti", format="%.2f 💩")
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+
+        st.divider()
+
+        # --- SEZIONE: CLASSIFICA COMPLETA ---
         st.subheader("📋 Classifica Completa")
         st.dataframe(
             classifica_totale, 
