@@ -9,8 +9,11 @@ st.title("🏆 Classifica Totale Cineteca Crast")
 st.markdown("Benvenuto nella dashboard della tua cineteca! Ecco la classifica aggiornata in tempo reale.")
 
 # --- CONFIGURAZIONE GOOGLE SHEETS ---
-ID_FOGLIO = "19mu5-ZeEOR5AW7AfjmxalXOZioUODxQw3mYD6JKIRWY"
+# Inserito il nuovo ID del foglio Google
+ID_FOGLIO = "1ewvtkUtp31Qeo-mpjXafuTQsyZEgiC06eS-EGCwao_8"
+# NOTA: Se all'interno del nuovo file la scheda non si chiama "Tabella Piatta", modifica la stringa qui sotto
 NOME_SCHEDA_PIATTA = "Tabella Piatta"
+
 NOME_SCHEDA_PIATTA_URL = urllib.parse.quote(NOME_SCHEDA_PIATTA)
 URL_TABELLA_PIATTA = f"https://docs.google.com/spreadsheets/d/{ID_FOGLIO.strip()}/gviz/tq?tqx=out:csv&sheet={NOME_SCHEDA_PIATTA_URL}"
 
