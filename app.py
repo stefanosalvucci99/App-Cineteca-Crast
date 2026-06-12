@@ -143,7 +143,7 @@ def mostra_home():
 
 
 # =====================================================================
-# PAGINA 2: CLASSIFICHE 2026 (Modificata con "I peggiori 5 💩")
+# PAGINA 2: CLASSIFICHE 2026
 # =====================================================================
 def mostra_classifiche_2026():
     st.title("📊 Classifiche e Analisi - Anno 2026")
@@ -174,7 +174,22 @@ def mostra_classifiche_2026():
         
         st.divider()
 
-        # --- NUOVA SEZIONE: I PEGGIORI 5 ---
+        # --- SEZIONE: CLASSIFICA COMPLETA ---
+        st.subheader("📋 Classifica Completa")
+        st.dataframe(
+            classifica_totale, 
+            column_config={
+                "Posizione": st.column_config.NumberColumn("Pos.", format="%d"),
+                "Films": st.column_config.TextColumn("Titolo del Film"),
+                "Media": st.column_config.NumberColumn("Media Voti", format="%.2f ⭐")
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+
+        st.divider()
+
+        # --- SEZIONE: I PEGGIORI 5 (Spostata qui sotto) ---
         st.subheader("💩 I Peggiori 5 del 2026")
         st.caption("I film che hanno ottenuto la media voto più bassa all'interno della Cineteca.")
         
@@ -189,21 +204,6 @@ def mostra_classifiche_2026():
                 "Flop": st.column_config.NumberColumn("Pos.", format="%d"),
                 "Films": st.column_config.TextColumn("Titolo del Film da Evitare"),
                 "Media": st.column_config.NumberColumn("Media Voti", format="%.2f 💩")
-            },
-            hide_index=True,
-            use_container_width=True
-        )
-
-        st.divider()
-
-        # --- SEZIONE: CLASSIFICA COMPLETA ---
-        st.subheader("📋 Classifica Completa")
-        st.dataframe(
-            classifica_totale, 
-            column_config={
-                "Posizione": st.column_config.NumberColumn("Pos.", format="%d"),
-                "Films": st.column_config.TextColumn("Titolo del Film"),
-                "Media": st.column_config.NumberColumn("Media Voti", format="%.2f ⭐")
             },
             hide_index=True,
             use_container_width=True
