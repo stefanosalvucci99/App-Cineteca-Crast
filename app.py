@@ -1,9 +1,17 @@
 import pandas as pd
 import streamlit as st
 import urllib.parse
+from openai import OpenAI  # <--- Nuova libreria per l'AI
 
 # --- CONFIGURAZIONE DELLA PAGINA (Deve essere la primissima istruzione) ---
 st.set_page_config(page_title="Cineteca Crast", page_icon="🏆", layout="centered")
+
+# --- INIZIALIZZAZIONE CLIENT OPENAI ---
+# Streamlit leggerà automaticamente la chiave da .streamlit/secrets.toml
+try:
+    client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+except Exception:
+    client = None
 
 # --- CONFIGURAZIONE GOOGLE SHEETS ---
 ID_FOGLIO = "1ewvtkUtp31Qeo-mpjXafuTQsyZEgiC06eS-EGCwao_8"
@@ -34,50 +42,59 @@ try:
 except Exception as e:
     errore_dati = True
 
-# --- LOGICA DEL CHATBOT STATISTICO ---
-def risposta_chatbot(user_input, df):
-    query = user_input.lower()
+# --- NUOVA LOGICA DEL CHATBOT CON VERA AI ---
+def risposta_chatbot_ai(user_input, df, messaggi_precedenti):
+    if client is None:
+        return "⚠️ Errore: Chiave API di OpenAI non configurata nei Secrets di Streamlit."
+
+    # 1. Prepariamo un riassunto dei dati da dare in pasto all'AI come contesto
+    # Generiamo classifiche e statistiche generali pronte per essere lette dall'AI
+    classifica = df.groupby("Film")["Voto"].agg(["mean", "count"]).reset_index()
+    classifica_str = classifica.to_string(index=False)
     
-    if "film" in query and ("miglior" in query or "primo" in query or "vincitore" in query):
-        classifica = df.groupby("Film")["Voto"].mean().reset_index()
-        migliore = classifica.sort_values(by="Voto", ascending=False).iloc[0]
-        return f"🎬 Il miglior film in assoluto è **{migliore['Film']}** con una media di **{migliore['Voto']:.2f} ⭐**."
+    utenti = df.groupby("Nome")["Voto"].agg(["mean", "count"]).reset_index()
+    utenti_str = utenti.to_string(index=False)
+
+    # 2. Definiamo le istruzioni di sistema (il "carattere" e le conoscenze dell'AI)
+    system_prompt = f"""
+    Sei l'assistente virtuale ufficiale della 'Cineteca Crast', un gruppo di cinefili che vota i film.
+    Il tuo compito è rispondere alle domande degli utenti basandoti RIGOROSAMENTE sui dati reali del database che ti forniamo qui sotto.
     
-    elif "film" in query and ("peggior" in query or "ultimo" in query):
-        classifica = df.groupby("Film")["Voto"].mean().reset_index()
-        peggiore = classifica.sort_values(by="Voto", ascending=True).iloc[0]
-        return f"📉 Il film con la media più bassa è **{peggiore['Film']}** con **{peggiore['Voto']:.2f} ⭐**."
+    Ecco i dati attuali della Cineteca:
+    
+    --- CLASSIFICA FILM (Media voti e numero di persone che lo hanno votato) ---
+    {classifica_str}
+    
+    --- STATISTICHE UTENTI (Media personale e numero di film votati) ---
+    {utenti_str}
+    
+    Regole di comportamento:
+    1. Sii simpatico, ironico e appassionato di cinema, ma preciso con i numeri.
+    2. Usa le emoji relative al cinema (🎬, 🍿, ⭐, 📊).
+    3. Se l'utente ti chiede pareri generali su film non presenti nel database, puoi rispondere come un esperto di cinema, ma specifica che quel film non è ancora stato votato nella Cineteca Crast.
+    4. Rispondi in italiano.
+    """
+
+    # 3. Costruiamo lo storico della conversazione da inviare alle API
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    # Includiamo gli ultimi messaggi per mantenere la memoria della chat (evitiamo di mandare millenni di cronologia)
+    for msg in messaggi_precedenti[-6:]: 
+        messages.append({"role": msg["role"], "content": msg["content"]})
         
-    elif "quanti" in query and "film" in query:
-        tot_film = df["Film"].nunique()
-        return f"🎥 Nella cineteca ci sono attualmente **{tot_film}** film unici votati."
-    
-    elif "chi" in query and ("voti" in query or "votato" in query) and "più" in query:
-        stacanovista = df["Nome"].value_counts().idxmax()
-        num_voti = df["Nome"].value_counts().max()
-        return f"🍿 Il cinefilo più attivo è **{stacanovista}** con ben **{num_voti}** voti espressi!"
-    
-    elif "media" in query and "voti" in query:
-        media_globale = df["Voto"].mean()
-        return f"📊 La media matematica di tutti i voti dati nella cineteca è di **{media_globale:.2f} ⭐**."
-    
-    # Ricerca dinamica per persona
-    for persona in df["Nome"].unique():
-        if persona.lower() in query:
-            df_p = df[df["Nome"] == persona]
-            media_p = df_p["Voto"].mean()
-            film_p = df_p["Film"].nunique()
-            return f"👤 **{persona}** ha guardato e votato **{film_p}** film, mantenendo una media personale di **{media_p:.2f} ⭐**."
+    # Aggiungiamo l'ultima domanda dell'utente
+    messages.append({"role": "user", "content": user_input})
 
-    # Ricerca dinamica per film
-    for film in df["Film"].unique():
-        if film.lower() in query:
-            df_f = df[df["Film"] == film]
-            media_f = df_f["Voto"].mean()
-            voti_f = df_f["Voto"].count()
-            return f"🔍 Il film **{film}** è stato votato da **{voti_f}** persone, raggiungendo una media di **{media_f:.2f} ⭐**."
-
-    return "🤖 Scusami, non ho capito la domanda. Prova a chiedermi cose come:\n- *Chi ha votato più film?*\n- *Qual è il miglior film?*\n- *Quanti film ci sono?*\n- *Qual è la media di [Nome Persona] o i dati di [Titolo Film]?*"
+    try:
+        # 4. Chiamata API (usiamo gpt-4o-mini che è velocissimo ed economico)
+        risposta = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            temperature=0.7
+        )
+        return risposta.choices[0].message.content
+    except Exception as e:
+        return f"❌ Errore durante la generazione della risposta: {str(e)}"
 
 
 # =====================================================================
@@ -94,7 +111,7 @@ def mostra_home():
     
     st.divider()
     st.subheader("🤖 Assistente Virtuale della Cineteca")
-    st.caption("Chiedimi statistiche sui film, sulle persone o sulle medie globali!")
+    st.caption("Chiedimi statistiche sui film, consigli o analisi sui voti dei cinefili!")
 
     if errore_dati:
         st.error("❌ Impossibile connettersi ai dati per alimentare il chatbot.")
@@ -103,7 +120,7 @@ def mostra_home():
     # Inizializzazione della cronologia della chat
     if "messages" not in st.session_state:
         st.session_state.messages = [
-            {"role": "assistant", "content": "Ciao! Sono il chatbot della Cineteca Crast. Chiedimi pure qualsiasi curiosità sulle classifiche!"}
+            {"role": "assistant", "content": "Ciao! Sono l'AI della Cineteca Crast. Chiedimi pure qualsiasi curiosità sulle classifiche, medie o opinioni del gruppo!"}
         ]
 
     # Mostra i messaggi precedenti
@@ -111,14 +128,17 @@ def mostra_home():
         st.chat_message(msg["role"]).write(msg["content"])
 
     # Input dell'utente
-    if user_query := st.chat_input("Inserisci la tua domanda (es. 'Qual è il miglior film?')"):
+    if user_query := st.chat_input("Inserisci la tua domanda (es. 'Chi ha la media voti più alta?')"):
         st.chat_message("user").write(user_query)
-        st.session_state.messages.append({"role": "user", "content": user_query})
         
-        # Generazione risposta
-        risposta = risposta_chatbot(user_query, df_data)
+        # Generazione risposta tramite AI (passando la cronologia per la memoria)
+        with st.spinner("L'AI sta analizzando i dati..."):
+            risposta = risposta_chatbot_ai(user_query, df_data, st.session_state.messages)
         
         st.chat_message("assistant").write(risposta)
+        
+        # Salviamo nello stato sia l'input utente che la risposta AI
+        st.session_state.messages.append({"role": "user", "content": user_query})
         st.session_state.messages.append({"role": "assistant", "content": risposta})
 
 
