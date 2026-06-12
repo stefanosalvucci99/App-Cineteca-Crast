@@ -79,4 +79,103 @@ def risposta_chatbot_ai(user_input, df, messaggi_precedenti):
     messages = [{"role": "system", "content": system_prompt}]
     
     # Includiamo gli ultimi messaggi per mantenere la memoria della chat (evitiamo di mandare millenni di cronologia)
-    for msg in messaggi_precedenti[-6:]:
+    for msg in messaggi_precedenti[-6:]: 
+        messages.append({"role": msg["role"], "content": msg["content"]})
+        
+    # Aggiungiamo l'ultima domanda dell'utente
+    messages.append({"role": "user", "content": user_input})
+
+    try:
+        # 4. Chiamata API (usiamo gpt-4o-mini che è velocissimo ed economico)
+        risposta = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            temperature=0.7
+        )
+        return risposta.choices[0].message.content
+    except Exception as e:
+        return f"❌ Errore durante la generazione della risposta: {str(e)}"
+
+
+# =====================================================================
+# PAGINA 1: HOME & CHATBOT
+# =====================================================================
+def mostra_home():
+    st.title("🏆 Benvenuto nella Cineteca Crast")
+    st.markdown("""
+    Questa è la dashboard ufficiale per gli amanti del cinema. Qui puoi tracciare i voti, 
+    scoprire le tendenze del gruppo e sfidare le opinioni degli altri cinefili.
+    
+    👈 Usa la **barra laterale sinistra** per navigare tra le sezioni del sito!
+    """)
+    
+    st.divider()
+    st.subheader("🤖 Assistente Virtuale della Cineteca")
+    st.caption("Chiedimi statistiche sui film, consigli o analisi sui voti dei cinefili!")
+
+    if errore_dati:
+        st.error("❌ Impossibile connettersi ai dati per alimentare il chatbot.")
+        return
+
+    # Inizializzazione della cronologia della chat
+    if "messages" not in st.session_state:
+        st.session_state.messages = [
+            {"role": "assistant", "content": "Ciao! Sono l'AI della Cineteca Crast. Chiedimi pure qualsiasi curiosità sulle classifiche, medie o opinioni del gruppo!"}
+        ]
+
+    # Mostra i messaggi precedenti
+    for msg in st.session_state.messages:
+        st.chat_message(msg["role"]).write(msg["content"])
+
+    # Input dell'utente
+    if user_query := st.chat_input("Inserisci la tua domanda (es. 'Chi ha la media voti più alta?')"):
+        st.chat_message("user").write(user_query)
+        
+        # Generazione risposta tramite AI (passando la cronologia per la memoria)
+        with st.spinner("L'AI sta analizzando i dati..."):
+            risposta = risposta_chatbot_ai(user_query, df_data, st.session_state.messages)
+        
+        st.chat_message("assistant").write(risposta)
+        
+        # Salviamo nello stato sia l'input utente che la risposta AI
+        st.session_state.messages.append({"role": "user", "content": user_query})
+        st.session_state.messages.append({"role": "assistant", "content": risposta})
+
+
+# =====================================================================
+# PAGINA 2: CLASSIFICHE 2026
+# =====================================================================
+def mostra_classifiche_2026():
+    st.title("📊 Classifiche e Analisi - Anno 2026")
+    
+    if errore_dati:
+        st.error("❌ Impossibile connettersi a Google Fogli o elaborare i dati.")
+        return
+
+    # --- ELABORAZIONE CLASSIFICA GENERALE ---
+    classifica = df_data.groupby("Film")["Voto"].mean().reset_index()
+    classifica = classifica.rename(columns={"Film": "Films", "Voto": "Media"})
+    
+    if not classifica.empty:
+        # Generazione classifica dei migliori (Decrescente)
+        classifica_totale = classifica.sort_values(by="Media", ascending=False).reset_index(drop=True)
+        classifica_totale.index = classifica_totale.index + 1
+        classifica_totale = classifica_totale.reset_index().rename(columns={"index": "Posizione"})
+
+        # --- SEZIONE: I MIGLIORI TRE ---
+        st.subheader("🥇 I Magnifici Tre")
+        col1, col2, col3 = st.columns(3)
+        if len(classifica_totale) >= 1:
+            col1.metric("1° Posto 🥇", classifica_totale.iloc[0]['Films'], f"{classifica_totale.iloc[0]['Media']:.2f}")
+        if len(classifica_totale) >= 2:
+            col2.metric("2° Posto 🥈", classifica_totale.iloc[1]['Films'], f"{classifica_totale.iloc[1]['Media']:.2f}")
+        if len(classifica_totale) >= 3:
+            col3.metric("3° Posto 🥉", classifica_totale.iloc[2]['Films'], f"{classifica_totale.iloc[2]['Media']:.2f}")
+        
+        st.divider()
+
+        # --- SEZIONE: CLASSIFICA COMPLETA ---
+        st.subheader("📋 Classifica Completa")
+        st.dataframe(
+            classifica_totale, 
+            column_config={
